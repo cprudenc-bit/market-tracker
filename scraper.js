@@ -13,26 +13,39 @@ async function enviarTelegram(mensaje) {
 }
 
 (async () => {
+  // Lanzamos el navegador simulando ser un usuario real
   const browser = await chromium.launch();
-  const page = await browser.newPage();
+  const context = await browser.newContext({
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
+  });
+  const page = await context.newPage();
   
-  // Ejemplo: Búsqueda de "Seiko" en Wallapop
   const query = "seiko";
-  await page.goto(`https://es.wallapop.com/app/search?keywords=${query}&filters_source=search_box&order_by=newest`);
-  
-  // Esperamos a que carguen los productos
-  await page.waitForTimeout(5000); 
+  console.log(`Buscando ${query} en Wallapop...`);
 
-  // Extraemos el primer producto (el más reciente)
-  const product = await page.locator('header').first(); 
-  const title = await page.locator('.ItemCard__title').first().innerText();
-  const price = await page.locator('.ItemCard__price').first().innerText();
-  const link = await page.url();
+  try {
+    await page.goto(`https://es.wallapop.com/app/search?keywords=${query}&order_by=newest`, { waitUntil: 'networkidle' });
+    
+    // Esperamos un poco más por si acaso
+    await page.waitForTimeout(5000); 
 
-  const aviso = `🚀 *¡Nuevo anuncio en Wallapop!* \n📦 ${title} \n💰 ${price} \n🔗 [Ver anuncio](${link})`;
-  
-  console.log("Enviando aviso...");
-  await enviarTelegram(aviso);
+    // Intentamos localizar el título del primer anuncio
+    const firstTitle = page.locator('[class*="ItemCard__title"]').first();
+    const firstPrice = page.locator('[class*="ItemCard__price"]').first();
+
+    const titleText = await firstTitle.innerText();
+    const priceText = await firstPrice.innerText();
+    const link = page.url();
+
+    const aviso = `🚀 *¡Anuncio encontrado!* \n📦 ${titleText} \n💰 ${priceText} \n🔗 [Ver en Wallapop](${link})`;
+    
+    console.log("¡Éxito! Enviando a Telegram...");
+    await enviarTelegram(aviso);
+
+  } catch (error) {
+    console.error("Vaya, no pude encontrar el anuncio:", error.message);
+    await enviarTelegram("⚠️ El rastreador ha tenido un problema al leer Wallapop. Reintentando en la próxima ejecución.");
+  }
 
   await browser.close();
 })();
