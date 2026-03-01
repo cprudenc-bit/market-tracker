@@ -1,4 +1,4 @@
-name: Market Scraper
+name: TEST BOT
 
 on:
   workflow_dispatch:
