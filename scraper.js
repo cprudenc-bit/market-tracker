@@ -1,19 +1,27 @@
 const { chromium } = require('playwright');
 const axios = require('axios');
 
+// Función para enviar mensajes a Telegram con reporte de errores
 async function enviarTelegram(mensaje) {
   const token = process.env.TELEGRAM_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
-  const url = `https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(mensaje)}&parse_mode=Markdown`;
+  const url = `https://api.telegram.org/bot${token}/sendMessage`;
+  
   try {
-    await axios.get(url);
+    const response = await axios.post(url, {
+      chat_id: chatId,
+      text: mensaje,
+      parse_mode: 'Markdown'
+    });
+    console.log("Respuesta de Telegram:", response.data.ok ? "¡Enviado con éxito!" : "Error en el envío");
   } catch (e) {
-    console.error("Error enviando a Telegram", e);
+    // Si hay un error con el Token o el Chat ID, lo veremos aquí
+    console.error("Error detallado de Telegram:", e.response ? e.response.data : e.message);
   }
 }
 
 (async () => {
-  // Lanzamos el navegador simulando ser un usuario real
+  // Configuramos el navegador para que parezca un usuario real
   const browser = await chromium.launch();
   const context = await browser.newContext({
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
@@ -21,15 +29,19 @@ async function enviarTelegram(mensaje) {
   const page = await context.newPage();
   
   const query = "seiko";
-  console.log(`Buscando ${query} en Wallapop...`);
+  console.log(`Buscando "${query}" en Wallapop...`);
 
   try {
-    await page.goto(`https://es.wallapop.com/app/search?keywords=${query}&order_by=newest`, { waitUntil: 'networkidle' });
+    // Vamos a Wallapop ordenando por los más nuevos
+    await page.goto(`https://es.wallapop.com/app/search?keywords=${query}&order_by=newest`, { 
+      waitUntil: 'networkidle',
+      timeout: 60000 
+    });
     
-    // Esperamos un poco más por si acaso
+    // Esperamos 5 segundos extra para que carguen las imágenes y títulos
     await page.waitForTimeout(5000); 
 
-    // Intentamos localizar el título del primer anuncio
+    // Localizamos el primer título y precio de la lista
     const firstTitle = page.locator('[class*="ItemCard__title"]').first();
     const firstPrice = page.locator('[class*="ItemCard__price"]').first();
 
@@ -37,14 +49,16 @@ async function enviarTelegram(mensaje) {
     const priceText = await firstPrice.innerText();
     const link = page.url();
 
+    // Montamos el mensaje
     const aviso = `🚀 *¡Anuncio encontrado!* \n📦 ${titleText} \n💰 ${priceText} \n🔗 [Ver en Wallapop](${link})`;
     
-    console.log("¡Éxito! Enviando a Telegram...");
+    console.log(`Encontrado: ${titleText} - ${priceText}`);
     await enviarTelegram(aviso);
 
   } catch (error) {
-    console.error("Vaya, no pude encontrar el anuncio:", error.message);
-    await enviarTelegram("⚠️ El rastreador ha tenido un problema al leer Wallapop. Reintentando en la próxima ejecución.");
+    console.error("No se pudo extraer el anuncio:", error.message);
+    // Opcional: avisar a Telegram si el scraper falla
+    // await enviarTelegram("⚠️ Wallapop ha bloqueado el acceso o no hay anuncios nuevos.");
   }
 
   await browser.close();
